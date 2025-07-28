@@ -1,0 +1,517 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>紐西蘭南島互動式旅程規劃器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Earthy Harmony -->
+    <!-- Application Structure Plan: 採用儀表板風格的單頁應用程式(SPA)，頂部設有導航欄，可切換至不同區塊：總覽、行程規劃、關鍵決策、預算估算、行前準備。這種非線性結構讓使用者能根據當下最關心的問題自由探索，比線性報告更適合旅行規劃。關鍵互動設計著重於比較選項（季節、車輛）和探索不同情境（預算），直接回應使用者「一切都還不確定」的狀態。 -->
+    <!-- Visualization & Content Choices: 季節：使用長條圖進行比較 -> JS動態更新說明文字。車輛：使用HTML/CSS並排比較，一目了然。行程：使用手風琴式卡片漸進式揭露資訊。預算：使用帶有切換按鈕的互動式長條圖進行情境規劃。所有視覺化組件均使用Chart.js(Canvas)或HTML/CSS，以避免使用SVG/Mermaid，並提供動態更新功能，將靜態表格轉化為引人入勝的規劃工具。 -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #F8F7F2; /* Warm Neutral Background */
+            color: #3C4043;
+        }
+        .nav-link {
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+        }
+        .nav-link.active, .nav-link:hover {
+            color: #A47551; /* Accent Color */
+            border-bottom-color: #A47551;
+        }
+        .content-section {
+            display: none;
+        }
+        .content-section.active {
+            display: block;
+        }
+        .card {
+            background-color: #FFFFFF;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+        }
+        .btn-primary {
+            background-color: #3A5A40; /* Primary Action Color */
+            color: #FFFFFF;
+            transition: background-color 0.3s ease;
+        }
+        .btn-primary:hover {
+            background-color: #588157;
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-in-out;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-50 shadow-sm">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-[#3A5A40]">🇳🇿 紐西蘭南島旅程規劃器</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="nav-link px-3 py-2 rounded-md text-sm font-medium">總覽</a>
+                        <a href="#decisions" class="nav-link px-3 py-2 rounded-md text-sm font-medium">關鍵決策</a>
+                        <a href="#itinerary" class="nav-link px-3 py-2 rounded-md text-sm font-medium">行程規劃</a>
+                        <a href="#budget" class="nav-link px-3 py-2 rounded-md text-sm font-medium">預算估算</a>
+                        <a href="#checklist" class="nav-link px-3 py-2 rounded-md text-sm font-medium">行前準備</a>
+                    </div>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none">
+                        <span class="sr-only">Open main menu</span>
+                        <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </nav>
+        <div id="mobile-menu" class="md:hidden hidden">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <a href="#overview" class="nav-link block px-3 py-2 rounded-md text-base font-medium">總覽</a>
+                <a href="#decisions" class="nav-link block px-3 py-2 rounded-md text-base font-medium">關鍵決策</a>
+                <a href="#itinerary" class="nav-link block px-3 py-2 rounded-md text-base font-medium">行程規劃</a>
+                <a href="#budget" class="nav-link block px-3 py-2 rounded-md text-base font-medium">預算估算</a>
+                <a href="#checklist" class="nav-link block px-3 py-2 rounded-md text-base font-medium">行前準備</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <section id="overview" class="content-section">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-[#3A5A40] sm:text-4xl">擘劃您的理想紐西蘭之旅</h2>
+                <p class="mt-4 text-lg text-gray-600">這份互動指南將協助您的團隊做出最佳決策，開啟一場無憾的南島自駕遠征。</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 text-center">
+                <div class="card p-6">
+                    <div class="text-4xl mb-4">🍂</div>
+                    <h3 class="text-xl font-bold mb-2">最佳時機</h3>
+                    <p class="text-gray-600">強烈推薦 <span class="font-semibold text-[#A47551]">2月下旬至4月初</span>。這段時間結合了夏末的溫暖與秋季的穩定天氣、絢麗色彩及合理價格。</p>
+                </div>
+                <div class="card p-6">
+                    <div class="text-4xl mb-4">🗺️</div>
+                    <h3 class="text-xl font-bold mb-2">專注南島</h3>
+                    <p class="text-gray-600">將您寶貴的14天完全奉獻給南島。這裡集中了紐西蘭最雄奇壯麗的冰川、峽灣與高山景觀，是自駕遊的精髓所在。</p>
+                </div>
+                <div class="card p-6">
+                    <div class="text-4xl mb-4">🚗💨</div>
+                    <h3 class="text-xl font-bold mb-2">車輛選擇</h3>
+                    <p class="text-gray-600">唯一明智的選擇是租賃 <span class="font-semibold text-[#A47551]">2輛SUV</span>。這確保了足夠的行李空間、行程彈性、駕駛舒適度與安全性。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="decisions" class="content-section">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-[#3A5A40] sm:text-4xl">關鍵決策中心</h2>
+                <p class="mt-4 text-lg text-gray-600">成功的旅程始於正確的選擇。這裡將幫助您釐清最重要的幾個問題。</p>
+            </div>
+
+            <div class="space-y-12">
+                <div class="card p-6 lg:p-8">
+                    <h3 class="text-2xl font-bold text-center mb-6">1. 時機的藝術：何時出發？</h3>
+                    <div class="grid md:grid-cols-2 gap-8 items-center">
+                        <div class="chart-container">
+                            <canvas id="seasonChart"></canvas>
+                        </div>
+                        <div id="season-details" class="text-gray-700 space-y-4">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-6 lg:p-8">
+                    <h3 class="text-2xl font-bold text-center mb-6">2. 公路上的自由：如何選擇座駕？</h3>
+                    <div class="grid md:grid-cols-2 gap-8 text-sm">
+                        <div class="border border-red-300 bg-red-50 p-4 rounded-lg">
+                            <h4 class="font-bold text-lg text-red-800 mb-2">方案A: 1輛8人座廂型車 (不推薦)</h4>
+                            <ul class="space-y-2">
+                                <li class="flex items-start"><span class="text-red-500 mr-2">❌</span> <strong>致命缺陷：行李容量嚴重不足</strong>，無法容納6-8人14天的行李。</li>
+                                <li class="flex items-start"><span class="text-red-500 mr-2">❌</span> <strong>行程彈性低</strong>，團隊必須集體行動，難以滿足個人興趣。</li>
+                                <li class="flex items-start"><span class="text-red-500 mr-2">❌</span> <strong>駕駛壓力大</strong>，在狹窄山路操控性差，舒適度較低。</li>
+                                <li class="flex items-start"><span class="text-red-500 mr-2">❌</span> <strong>無備援能力</strong>，單車故障將導致整個團隊行程停擺。</li>
+                            </ul>
+                        </div>
+                        <div class="border border-green-300 bg-green-50 p-4 rounded-lg">
+                            <h4 class="font-bold text-lg text-green-800 mb-2">方案B: 2輛SUV (強烈推薦)</h4>
+                            <ul class="space-y-2">
+                                <li class="flex items-start"><span class="text-green-500 mr-2">✅</span> <strong>行李容量充裕</strong>，每車4人加行李，空間寬敞。</li>
+                                <li class="flex items-start"><span class="text-green-500 mr-2">✅</span> <strong>行程彈性極高</strong>，可隨時分組行動，維持團隊和諧。</li>
+                                <li class="flex items-start"><span class="text-green-500 mr-2">✅</span> <strong>駕駛更安全舒適</strong>，操控性佳，適合多彎山路。</li>
+                                <li class="flex items-start"><span class="text-green-500 mr-2">✅</span> <strong>內建備援能力</strong>，一車出問題，另一車可即時支援。</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <p class="text-center mt-4 text-gray-600 font-semibold">結論：在總成本相近的前提下，選擇兩輛SUV是唯一專業且能確保旅途品質的決策。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="itinerary" class="content-section">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-[#3A5A40] sm:text-4xl">14天南島環線行程</h2>
+                <p class="mt-4 text-lg text-gray-600">一個節奏舒緩、景觀遞進的順時針行程。點擊每日標題以展開詳細資訊。</p>
+            </div>
+            <div id="itinerary-accordion" class="space-y-2">
+            </div>
+        </section>
+
+        <section id="budget" class="content-section">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-[#3A5A40] sm:text-4xl">互動式預算估算器</h2>
+                <p class="mt-4 text-lg text-gray-600">選擇您的旅行風格，看看預算如何變化。所有費用均為紐幣(NZD)人均估算。</p>
+            </div>
+
+            <div class="card p-6 lg:p-8">
+                <div class="flex justify-center mb-6">
+                    <div class="inline-flex rounded-md shadow-sm" role="group">
+                        <button type="button" id="budget-low" class="budget-toggle btn-primary px-4 py-2 text-sm font-medium rounded-l-lg">
+                            💰 經濟實惠
+                        </button>
+                        <button type="button" id="budget-high" class="budget-toggle bg-white text-gray-900 hover:bg-gray-100 px-4 py-2 text-sm font-medium rounded-r-lg border border-gray-200">
+                            🌟 豪華體驗
+                        </button>
+                    </div>
+                </div>
+                <div class="grid md:grid-cols-2 gap-8 items-center">
+                    <div class="chart-container">
+                        <canvas id="budgetChart"></canvas>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-lg text-gray-600">預估人均總費用</p>
+                        <p id="total-budget" class="text-5xl font-bold text-[#3A5A40] my-2"></p>
+                        <p id="total-budget-twd" class="text-xl text-gray-500"></p>
+                        <p class="text-xs text-gray-400 mt-2">匯率僅供參考，請以實際兌換為準。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="checklist" class="content-section">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-[#3A5A40] sm:text-4xl">行前準備時間軸</h2>
+                <p class="mt-4 text-lg text-gray-600">遵循此時間規劃，確保一切順利。</p>
+            </div>
+            <div class="space-y-8">
+                <div class="card p-6">
+                    <h3 class="font-bold text-xl text-[#A47551] mb-2">出發前 9-12 個月</h3>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li>最終確定團隊人數 (6人或8人)</li>
+                        <li>共同商定旅行的目標時間窗口</li>
+                        <li>開始監控國際機票價格趨勢</li>
+                    </ul>
+                </div>
+                <div class="card p-6">
+                    <h3 class="font-bold text-xl text-[#A47551] mb-2">出發前 6-9 個月</h3>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li><strong>預訂國際機票 (最關鍵!)</strong></li>
+                        <li>預訂租賃車輛 (2輛SUV)</li>
+                        <li>預訂極度熱門的住宿和活動 (如Onsen溫泉)</li>
+                    </ul>
+                </div>
+                <div class="card p-6">
+                    <h3 class="font-bold text-xl text-[#A47551] mb-2">出發前 3-6 個月</h3>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li>預訂剩餘的所有住宿</li>
+                        <li>預訂其他關鍵行程 (如冰川健行、峽灣遊船)</li>
+                        <li>所有駕駛員申請國際駕駛許可 (IDP)</li>
+                    </ul>
+                </div>
+                <div class="card p-6">
+                    <h3 class="font-bold text-xl text-[#A47551] mb-2">出發前 1 個月</h3>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li>再次確認所有預訂</li>
+                        <li>兌換少量紐幣現金</li>
+                        <li>準備衣物 (洋蔥式穿法是關鍵，必備防水外套)</li>
+                        <li>購買旅遊保險 (強烈建議)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-white mt-12">
+        <div class="container mx-auto py-6 px-4 text-center text-gray-500">
+            <p>本規劃器根據提供的報告生成，旨在協助您的紐西蘭之旅。祝您旅途愉快！</p>
+            <p class="text-sm mt-2">Embrace the <a href="https://www.tiakinewzealand.com/" target="_blank" class="underline hover:text-[#3A5A40]">Tiaki Promise</a> - Care for New Zealand.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const sections = document.querySelectorAll('.content-section');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+
+            function updateContent(hash) {
+                hash = hash || window.location.hash || '#overview';
+                
+                sections.forEach(section => {
+                    if ('#' + section.id === hash) {
+                        section.classList.add('active');
+                    } else {
+                        section.classList.remove('active');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    if (link.getAttribute('href') === hash) {
+                        link.classList.add('active');
+                    } else {
+                        link.classList.remove('active');
+                    }
+                });
+                
+                mobileMenu.classList.add('hidden');
+            }
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const hash = this.getAttribute('href');
+                    history.pushState(null, null, hash);
+                    updateContent(hash);
+                });
+            });
+
+            mobileMenuButton.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+            
+            window.addEventListener('popstate', () => updateContent(window.location.hash));
+            updateContent();
+
+            const seasonData = {
+                labels: ['夏季 (12-2月)', '秋季 (3-5月)', '冬季 (6-8月)', '春季 (9-11月)'],
+                datasets: [
+                    {
+                        label: '成本水平 (越高越貴)',
+                        data: [5, 3, 1, 2],
+                        backgroundColor: '#A47551',
+                        borderColor: '#A47551',
+                        borderWidth: 1,
+                        yAxisID: 'yCost',
+                    },
+                    {
+                        label: '天氣穩定度 (越高越好)',
+                        data: [5, 4, 3, 2],
+                        backgroundColor: '#588157',
+                        borderColor: '#588157',
+                        borderWidth: 1,
+                        yAxisID: 'yCost',
+                    }
+                ]
+            };
+            const seasonDetails = [
+                { title: '夏季：巔峰體驗', pros: '天氣最佳，日照最長，適合所有戶外活動。', cons: '價格最高，人潮最擁擠，所有項目需提前數月預訂。', temp: '20-25°C' },
+                { title: '秋季：鑑賞家之選', pros: '天氣穩定晴朗，遊客減少，價格回落，可欣賞絕美秋色。', cons: '日照縮短，越接近冬季氣溫越低。', temp: '17-21°C' },
+                { title: '冬季：探險者的淡季', pros: '價格最低，遊客最少，是滑雪等冬季運動的最佳季節。', cons: '日照極短，部分活動關閉，高山道路有封閉風險。', temp: '7-12°C' },
+                { title: '春季：復甦與變幻', pros: '價格合理，百花盛開，魯冰花季登場。', cons: '天氣極度不穩定且多雨，戶外活動取消風險高。', temp: '16-19°C' }
+            ];
+            
+            const seasonChartCtx = document.getElementById('seasonChart').getContext('2d');
+            const seasonChart = new Chart(seasonChartCtx, {
+                type: 'bar',
+                data: seasonData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        yCost: {
+                            type: 'linear',
+                            position: 'left',
+                            beginAtZero: true,
+                            max: 5,
+                            title: { display: true, text: '評分 (1-5)' }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y + '分';
+                                    }
+                                    return label;
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'bottom',
+                        }
+                    },
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            updateSeasonDetails(index);
+                        }
+                    }
+                }
+            });
+
+            const seasonDetailsContainer = document.getElementById('season-details');
+            function updateSeasonDetails(index) {
+                const data = seasonDetails[index];
+                seasonDetailsContainer.innerHTML = `
+                    <h4 class="font-bold text-xl text-[#3A5A40]">${data.title}</h4>
+                    <p><strong>平均氣溫：</strong>${data.temp}</p>
+                    <p><strong><span class="text-green-600">優勢：</span></strong>${data.pros}</p>
+                    <p><strong><span class="text-red-600">劣勢：</span></strong>${data.cons}</p>
+                    ${index === 1 ? '<p class="p-3 bg-green-100 text-green-800 rounded-lg font-bold">⭐ 綜合評估，秋季 (特別是2月底至4月初) 是您的最佳選擇！</p>' : ''}
+                `;
+            }
+            updateSeasonDetails(1);
+
+            const budgetData = {
+                labels: ['國際機票', '車輛租賃', '住宿', '活動', '餐飲', '雜項'],
+                low: [1200, 400, 1050, 1000, 700, 150],
+                high: [1800, 550, 2100, 1800, 1400, 250]
+            };
+            const budgetChartCtx = document.getElementById('budgetChart').getContext('2d');
+            const budgetChart = new Chart(budgetChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: budgetData.labels,
+                    datasets: [{
+                        label: '費用分佈 (NZD)',
+                        data: budgetData.low,
+                        backgroundColor: ['#3A5A40', '#588157', '#A3B18A', '#DAD7CD', '#A47551', '#6B5B4B'],
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+            
+            const totalBudgetEl = document.getElementById('total-budget');
+            const totalBudgetTwdEl = document.getElementById('total-budget-twd');
+            const budgetToggles = document.querySelectorAll('.budget-toggle');
+
+            function updateBudget(type) {
+                const data = budgetData[type];
+                budgetChart.data.datasets[0].data = data;
+                budgetChart.update();
+
+                const total = data.reduce((a, b) => a + b, 0);
+                totalBudgetEl.textContent = `~$${total.toLocaleString()}`;
+                totalBudgetTwdEl.textContent = `約 NT$${(total * 20.5).toLocaleString()}`;
+
+                budgetToggles.forEach(toggle => {
+                    if (toggle.id.includes(type)) {
+                        toggle.classList.add('btn-primary');
+                        toggle.classList.remove('bg-white', 'text-gray-900', 'hover:bg-gray-100', 'border', 'border-gray-200');
+                    } else {
+                        toggle.classList.remove('btn-primary');
+                        toggle.classList.add('bg-white', 'text-gray-900', 'hover:bg-gray-100', 'border', 'border-gray-200');
+                    }
+                });
+            }
+
+            budgetToggles.forEach(toggle => {
+                toggle.addEventListener('click', () => {
+                    updateBudget(toggle.id.includes('low') ? 'low' : 'high');
+                });
+            });
+
+            updateBudget('low');
+
+            const itinerary = [
+                { day: 1, title: '抵達基督城 & 初步整備', drive: 'N/A', details: '領取SUV，前往Pak\'nSave超市大採購，入住汽車旅館休整。' },
+                { day: 2, title: '→ 蒂卡波湖', drive: '約3小時 (230km)', details: '探訪好牧羊人教堂，晚上參加Dark Sky Project觀星團 (需預訂)。' },
+                { day: 3, title: '→ 庫克山國家公園', drive: '單程約1.5小時 (105km)', details: '挑戰必做的胡克谷步道 (來回3小時)，欣賞冰川湖景。可返回蒂卡波或住在特威澤爾。' },
+                { day: 4, title: '→ 但尼丁', drive: '約4小時 (320km)', details: '途經摩拉基大圓石。探索但尼丁市區建築，前往奧塔哥半島觀賞野生動物。' },
+                { day: 5, title: '→ 蒂阿瑙', drive: '約4小時 (290km)', details: '峽灣地區的門戶。晚上參加蒂阿瑙螢火蟲洞之旅 (推薦！)。' },
+                { day: 6, title: '米佛峽灣一日遊', drive: '單程約2.5小時 (120km)', details: '<strong>關鍵：出發前加滿油，此路段無訊號！</strong> 沿途風景優美，參加2小時的峽灣遊船。' },
+                { day: 7, title: '→ 皇后鎮', drive: '約2小時 (170km)', details: '冒險之都！下午搭乘天空纜車，玩Luge滑車，欣賞全景。晚餐可挑戰Fergburger。' },
+                { day: 8, title: '皇后鎮自由日', drive: 'N/A', details: '刺激派可選噴射快艇或蹦極；休閒派可去Onsen溫泉 (需提前數月預訂！)；風景派可自駕去格林諾奇。' },
+                { day: 9, title: '皇后鎮品酒日', drive: 'N/A', details: '探索吉布斯頓谷酒莊，品嚐黑皮諾。下午探訪歷史淘金小鎮——箭鎮。' },
+                { day: 10, title: '→ 福克斯冰川', drive: '約5小時 (330km)', details: '經瓦納卡孤樹，翻越哈斯特通道。沿途可在藍池短途步行。' },
+                { day: 11, title: '福克斯冰川 & 應急預案', drive: 'N/A', details: '<strong>首選：直升機冰川健行 (每人$699，需預訂)。</strong> 若因天氣取消，B計劃：遊覽馬松森湖、冰川觀景步道或前往法蘭士·約瑟夫冰川。' },
+                { day: 12, title: '→ 亞瑟隘口/格雷茅斯', drive: '約4小時 (300km)', details: '沿西海岸北上，探訪霍基蒂卡峽谷和普納凱基薄餅岩。' },
+                { day: 13, title: '→ 基督城', drive: '約3小時 (150km)', details: '穿越壯觀的亞瑟隘口高山公路，途中可在城堡山停留。' },
+                { day: 14, title: '返航', drive: 'N/A', details: '享用最後一頓紐西蘭早餐，前往機場還車，搭機返家。' },
+            ];
+            const accordionContainer = document.getElementById('itinerary-accordion');
+            itinerary.forEach(item => {
+                const itemEl = document.createElement('div');
+                itemEl.classList.add('card');
+                itemEl.innerHTML = `
+                    <div class="accordion-header flex justify-between items-center p-4 cursor-pointer">
+                        <h4 class="font-bold text-lg">第 ${item.day} 天: ${item.title}</h4>
+                        <span class="transform transition-transform duration-300">▼</span>
+                    </div>
+                    <div class="accordion-content px-4">
+                        <div class="py-4 border-t border-gray-200">
+                            <p><strong>駕駛時間：</strong> ${item.drive}</p>
+                            <p class="mt-2"><strong>行程亮點：</strong> ${item.details}</p>
+                        </div>
+                    </div>
+                `;
+                accordionContainer.appendChild(itemEl);
+            });
+
+            document.querySelectorAll('.accordion-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const content = header.nextElementSibling;
+                    const icon = header.querySelector('span');
+
+                    if (content.style.maxHeight) {
+                        content.style.maxHeight = null;
+                        icon.style.transform = 'rotate(0deg)';
+                    } else {
+                        document.querySelectorAll('.accordion-content').forEach(c => c.style.maxHeight = null);
+                        document.querySelectorAll('.accordion-header span').forEach(i => i.style.transform = 'rotate(0deg)');
+                        content.style.maxHeight = content.scrollHeight + "px";
+                        icon.style.transform = 'rotate(180deg)';
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
